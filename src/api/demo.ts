@@ -4,12 +4,12 @@
 
 import { idb, getBlob, putBlob } from '../lib/db';
 import { addDays, isoLocal, newId } from '../lib/dates';
-import type { Bootstrap, Day, Duty, Rider, Stayover } from './types';
+import type { Bootstrap, Day, Duty, FormReq, Rider, Stayover } from './types';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const OWNER: Record<string, string> = {
   Checkins: 'rider', Journals: 'author', Reports: 'author', Gas: 'driver', Expenses: 'recordedBy',
-  Donations: 'recordedBy', Interviews: 'interviewers', Media: 'uploader',
+  Donations: 'recordedBy', Interviews: 'interviewers', Media: 'uploader', Submissions: 'rider',
 };
 export const DEMO_TEAM_CODE = 'demo';
 
@@ -35,8 +35,34 @@ function seed(): Promise<void> {
   return seeding;
 }
 
+const DEMO_FORMS: FormReq[] = [
+  { id: 'F1', form: 'Liability waiver', description: 'The signed Illini 4000 waiver of liability.', required: true, templateLink: '', dueDate: '' },
+  { id: 'F2', form: 'Media release', description: 'Permission for the team to use photos, video and interviews that include you.', required: true, templateLink: '', dueDate: '' },
+  { id: 'F3', form: 'Health insurance card', description: 'Photos of the front and back of your card.', required: true, templateLink: '', dueDate: '' },
+  { id: 'F4', form: 'Medical & emergency info', description: 'Allergies, medications, conditions and your emergency contact.', required: true, templateLink: '', dueDate: '' },
+  { id: 'F5', form: 'Bike safety check', description: 'Tune-up sign-off from a bike shop before the ride.', required: false, templateLink: '', dueDate: '' },
+];
+
+async function seedForms() {
+  if (await idb.get('local', 'demo:Forms')) return;
+  const ago = (d: number) => new Date(Date.now() - d * 86400000).toISOString();
+  const sub = (id: string, rider: string, f: FormReq, status: string, d: number, note = '') => ({
+    id, timestamp: ago(d), day: 0, rider, formId: f.id, form: f.form, status, note, fileLink: '',
+    reviewedBy: status === 'Submitted' ? '' : 'Avery Chen', reviewedAt: status === 'Submitted' ? '' : ago(d - 1),
+  });
+  const [w, m, ins, med] = DEMO_FORMS;
+  await save('Forms', DEMO_FORMS);
+  await save('Submissions', [
+    sub('sub1', 'Sam Rivera', w, 'Approved', 30), sub('sub2', 'Sam Rivera', m, 'Approved', 30), sub('sub3', 'Sam Rivera', ins, 'Submitted', 2),
+    sub('sub4', 'Maya Johnson', w, 'Approved', 25), sub('sub5', 'Maya Johnson', med, 'Needs redo', 6, 'Please add your emergency contact\'s phone number.'),
+    sub('sub6', 'Leo Kim', w, 'Submitted', 1), sub('sub7', 'Priya Shah', w, 'Approved', 20), sub('sub8', 'Priya Shah', m, 'Approved', 20),
+    sub('sub9', 'Priya Shah', ins, 'Approved', 20), sub('sub10', 'Priya Shah', med, 'Approved', 20, 'Paper copy'),
+    sub('sub11', 'Avery Chen', w, 'Approved', 40), sub('sub12', 'Grace Lee', m, 'Submitted', 3),
+  ]);
+}
+
 async function doSeed() {
-  if (await idb.get('local', 'demo:Riders')) return;
+  if (await idb.get('local', 'demo:Riders')) { await seedForms(); return; }
   const today = isoLocal();
   const start = addDays(today, -2); // today is Day 3
   const riders: Rider[] = [
@@ -118,6 +144,7 @@ async function doSeed() {
     { id: 'd1', timestamp: ts(1, 20), day: 2, recordedBy: 'Avery Chen', donor: 'Riverside Friends', donorContact: '', type: 'Food / meal', amount: '', description: 'Dinner and breakfast for 30', thankYouSent: false, notes: '', fileLink: '' },
   ]);
   for (const t of ['Expenses', 'Interviews', 'Media', 'DriverSwaps']) await save(t, []);
+  await seedForms();
 }
 
 function riderPublic(r: Rider): Rider {
@@ -169,6 +196,8 @@ export async function demoCall(action: string, req: Row): Promise<unknown> {
         itinerary: await table<Day>('Itinerary'),
         stayovers: await table<Stayover>('Stayovers'),
         duties: await table<Duty>('Duties'),
+        forms: await table<FormReq>('Forms'),
+        submissions: (await table<Row>('Submissions')).filter(x => x.rider === user.name) as Bootstrap['submissions'],
       };
       return out;
     }
@@ -176,6 +205,8 @@ export async function demoCall(action: string, req: Row): Promise<unknown> {
       let rows = await table<Row>(req.sheet);
       if (req.day !== undefined && req.day !== null && req.day !== '') rows = rows.filter(r => Number(r.day) === Number(req.day));
       if (req.sheet === 'Journals') rows = rows.filter(r => r.visibility !== 'private' || r.author === user.name);
+      if (req.sheet === 'Submissions' && !isLeader(user)) rows = rows.filter(r => r.rider === user.name);
+      if (req.sheet === 'Media' && !isLeader(user)) rows = rows.filter(r => r.kind !== 'rider-form' || r.uploader === user.name);
       return rows;
     }
     case 'add': {
@@ -184,8 +215,13 @@ export async function demoCall(action: string, req: Row): Promise<unknown> {
       if (rows.find(r => r.id === row.id)) return row;
       row.timestamp = row.timestamp || new Date().toISOString();
       const o = OWNER[req.sheet];
-      if (o && !row[o]) row[o] = user.name;
+      if (o && (!row[o] || !['Gas', 'Interviews'].includes(req.sheet))) row[o] = user.name;
       if (req.sheet === 'Reports' && !row.status) row.status = 'Open';
+      if (req.sheet === 'Submissions') {
+        const f = (await table<FormReq>('Forms')).find(x => x.id === row.formId);
+        if (!f) throw new Error('That form is not in the Forms list anymore.');
+        Object.assign(row, { form: f.form, status: 'Submitted', reviewedBy: '', reviewedAt: '', fileLink: '' });
+      }
       rows.push(row);
       await save(req.sheet, rows);
       return row;
@@ -233,6 +269,24 @@ export async function demoCall(action: string, req: Row): Promise<unknown> {
       if (req.rwgpsLink !== undefined) p.rwgpsLink = req.rwgpsLink;
       const day = await patch('Itinerary', 'day', Number(req.day), p);
       return { day, warning: req.rwgpsLink ? 'Demo mode cannot read miles from RideWithGPS. With the real backend, route miles and climbing fill in automatically.' : '' };
+    }
+    case 'reviewForm': {
+      if (!isLeader(user)) throw new Error('Only leaders can review forms.');
+      const rows = await table<Row>('Submissions');
+      const now = new Date().toISOString();
+      const hit = rows.find(r => r.id === req.id);
+      if (hit) {
+        Object.assign(hit, { status: req.status, note: req.note || '', reviewedBy: user.name, reviewedAt: now });
+        await save('Submissions', rows);
+        return hit;
+      }
+      const f = (await table<FormReq>('Forms')).find(x => x.id === req.formId);
+      if (!f) throw new Error('Pick a rider and a form.');
+      const row = { id: req.id || newId(), timestamp: now, day: 0, rider: req.rider, formId: f.id, form: f.form, status: req.status,
+        note: req.note || '', fileLink: '', reviewedBy: user.name, reviewedAt: now };
+      rows.push(row);
+      await save('Submissions', rows);
+      return row;
     }
     case 'toggleDuty':
       return patch('Duties', 'id', req.id, { done: !!req.done, doneBy: req.done ? user.name : '', doneAt: req.done ? new Date().toISOString() : '' });

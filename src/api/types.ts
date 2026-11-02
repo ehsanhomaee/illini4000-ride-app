@@ -83,6 +83,16 @@ export interface Config {
   driveFolderUrl?: string; // leaders only
 }
 
+/** A form every rider hands in (Forms tab): waiver, insurance card, media release… */
+export interface FormReq {
+  id: string;
+  form: string;
+  description: string;
+  required: boolean;
+  templateLink: string;
+  dueDate: string;
+}
+
 export interface Bootstrap {
   config: Config;
   me: Rider;
@@ -90,6 +100,8 @@ export interface Bootstrap {
   itinerary: Day[];
   stayovers: Stayover[];
   duties: Duty[];
+  forms: FormReq[];
+  submissions: Submission[]; // mine
 }
 
 // ---- Things people add during the day -------------------------------------
@@ -129,7 +141,12 @@ export interface Interview extends RowBase {
 }
 export interface DriverSwap extends RowBase { fromDriver: string; toDriver: string; changedBy: string; reason: string; }
 
-export type MediaKind = 'photo' | 'video' | 'receipt' | 'donation' | 'interview-audio' | 'interview-video' | 'interview-photo' | 'release-form' | 'report';
+export type FormStatus = 'Submitted' | 'Approved' | 'Needs redo';
+export interface Submission extends RowBase {
+  rider: string; formId: string; form: string; status: FormStatus; note: string; fileLink: string; reviewedBy: string; reviewedAt: string;
+}
+
+export type MediaKind = 'photo' | 'video' | 'receipt' | 'donation' | 'interview-audio' | 'interview-video' | 'interview-photo' | 'release-form' | 'report' | 'rider-form';
 export interface Media extends RowBase {
   uploader: string; kind: MediaKind; fileName: string; mimeType: string; size: number;
   driveFileId: string; driveUrl: string; caption: string; linkedSheet: string; linkedId: string;
@@ -147,6 +164,7 @@ export interface SheetRows {
   Interviews: Interview;
   Media: Media;
   DriverSwaps: DriverSwap;
+  Submissions: Submission;
 }
 export type ListSheet = keyof SheetRows;
 export type AddSheet = Exclude<ListSheet, 'Media' | 'DriverSwaps'>;

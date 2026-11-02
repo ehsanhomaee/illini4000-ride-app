@@ -25,6 +25,8 @@ var SCHEMA = {
     'Check-in Time', 'Check-out Time', 'Dinner', 'Breakfast', 'Lunch', 'Showers', 'Laundry', 'Sleeping', 'WiFi',
     'Van Parking', 'Notes', 'Caller', 'Confirmed', 'Confirmed By', 'Confirmed At', 'Call Notes'],
   Duties: ['ID', 'Day', 'Person', 'Duty', 'Details', 'Done', 'Done By', 'Done At'],
+  Forms: ['ID', 'Form', 'Description', 'Required', 'Template Link', 'Due Date'],
+  Submissions: ['ID', 'Timestamp', 'Day', 'Rider', 'Form ID', 'Form', 'Status', 'Note', 'File Link', 'Reviewed By', 'Reviewed At'],
   DriverSwaps: ['ID', 'Timestamp', 'Day', 'From Driver', 'To Driver', 'Changed By', 'Reason'],
   Checkins: ['ID', 'Timestamp', 'Day', 'Rider', 'Type', 'Lat', 'Lon', 'Note'],
   Journals: ['ID', 'Timestamp', 'Day', 'Author', 'Visibility', 'Title', 'Text'],
@@ -37,17 +39,17 @@ var SCHEMA = {
 };
 
 var CHECKBOX_COLUMNS = {
-  Riders: ['Can Drive'], Itinerary: ['Rest Day'], Stayovers: ['Confirmed'], Duties: ['Done'],
+  Riders: ['Can Drive'], Itinerary: ['Rest Day'], Stayovers: ['Confirmed'], Duties: ['Done'], Forms: ['Required'],
   Donations: ['Thank You Sent'], Interviews: ['Release Signed']
 };
 
 // Who the person-column is for each tab people add to (used for "can edit own row").
 var OWNER_COLUMN = {
   Checkins: 'rider', Journals: 'author', Reports: 'author', Gas: 'driver', Expenses: 'recordedBy',
-  Donations: 'recordedBy', Interviews: 'interviewers', Media: 'uploader'
+  Donations: 'recordedBy', Interviews: 'interviewers', Media: 'uploader', Submissions: 'rider'
 };
 var CHOOSABLE_OWNER = ['Gas', 'Interviews']; // the form picks the driver / interviewers
-var ADDABLE = ['Checkins', 'Journals', 'Reports', 'Gas', 'Expenses', 'Donations', 'Interviews'];
+var ADDABLE = ['Checkins', 'Journals', 'Reports', 'Gas', 'Expenses', 'Donations', 'Interviews', 'Submissions'];
 var LISTABLE = ADDABLE.concat(['Media', 'DriverSwaps']);
 
 var CONFIG_DEFAULTS = [
@@ -67,7 +69,18 @@ var CONFIG_DEFAULTS = [
   ['Receipts Folder ID', '', 'Filled by setup()'],
   ['Donations Folder ID', '', 'Filled by setup()'],
   ['Interviews Folder ID', '', 'Filled by setup()'],
-  ['Reports Folder ID', '', 'Filled by setup()']
+  ['Reports Folder ID', '', 'Filled by setup()'],
+  ['Rider Forms Folder ID', '', 'Filled by setup(). Waivers, insurance cards, medical forms. Share this folder with leaders only.']
+];
+
+// Starting list for the Forms tab; leaders edit it in the sheet.
+var FORM_DEFAULTS = [
+  ['F1', 'Liability waiver', 'The signed Illini 4000 waiver of liability.', true],
+  ['F2', 'Media release', 'Permission for the team to use photos, video and interviews that include you.', true],
+  ['F3', 'Health insurance card', 'Photos of the front and back of your card.', true],
+  ['F4', 'Medical & emergency info', 'Allergies, medications, conditions and your emergency contact.', true],
+  ['F5', 'Bike safety check', 'Tune-up sign-off from a bike shop before the ride.', false],
+  ['F6', 'Parent/guardian consent', 'Only for riders under 18.', false]
 ];
 
 // ------------------------------------------------------------- web entry --
@@ -116,6 +129,7 @@ function route_(req) {
     case 'setRoute': return setRoute_(me, req);
     case 'toggleDuty': return withLock_(function () { return toggleDuty_(me, req.id, req.done); });
     case 'addDuty': return withLock_(function () { return addDuty_(me, req.row); });
+    case 'reviewForm': return withLock_(function () { return reviewForm_(me, req); });
     case 'upload': return upload_(me, req);
     case 'uploadStart': return uploadStart_(me, req);
     case 'uploadChunk': return uploadChunk_(me, req);
@@ -267,7 +281,7 @@ function tz_() { return ss_().getSpreadsheetTimeZone() || Session.getScriptTimeZ
 function cellOut_(v, key) {
   if (v instanceof Date) {
     if (v.getFullYear() < 1900) return Utilities.formatDate(v, tz_(), 'h:mm a');
-    if (key === 'date') return Utilities.formatDate(v, tz_(), 'yyyy-MM-dd');
+    if (key === 'date' || key === 'dueDate') return Utilities.formatDate(v, tz_(), 'yyyy-MM-dd');
     return v.toISOString();
   }
   return v;
@@ -431,8 +445,19 @@ function bootstrap_(me) {
     riders: readTable_('Riders').filter(function (r) { return r.name; }).map(function (r) { return publicRider_(r, leader); }),
     itinerary: itinerary_(),
     stayovers: stayovers_(),
-    duties: duties_()
+    duties: duties_(),
+    forms: forms_(),
+    submissions: readTable_('Submissions').filter(function (x) { return x.rider === me.name; }).map(function (x) {
+      var o = clean_(x); o.id = String(o.id); o.formId = String(o.formId); return o;
+    })
   };
+}
+
+function forms_() {
+  return readTable_('Forms').filter(function (f) { return f.form; }).map(function (f) {
+    return { id: String(f.id || f.form), form: String(f.form), description: String(f.description || ''), required: truthy_(f.required),
+      templateLink: String(f.templateLink || ''), dueDate: String(f.dueDate || '').slice(0, 10) };
+  });
 }
 
 function list_(me, sheet, day) {
@@ -442,6 +467,9 @@ function list_(me, sheet, day) {
   if (sheet === 'Journals') {
     rows = rows.filter(function (r) { return r.visibility !== 'private' || r.author === me.name; });
   }
+  // Waivers, insurance cards and medical forms: only the rider and leaders.
+  if (sheet === 'Submissions' && !isLeader_(me)) rows = rows.filter(function (r) { return r.rider === me.name; });
+  if (sheet === 'Media' && !isLeader_(me)) rows = rows.filter(function (r) { return r.kind !== 'rider-form' || r.uploader === me.name; });
   return rows.map(function (r) {
     var o = clean_(r);
     o.id = String(o.id); o.day = Number(o.day);
@@ -463,6 +491,11 @@ function add_(me, sheet, row) {
   if (owner && (CHOOSABLE_OWNER.indexOf(sheet) < 0 || !row[owner])) row[owner] = me.name;
   if (sheet === 'Gas' && !row.total && row.gallons && row.pricePerGallon) row.total = Math.round(row.gallons * row.pricePerGallon * 100) / 100;
   if (sheet === 'Reports' && !row.status) row.status = 'Open';
+  if (sheet === 'Submissions') {
+    var form = forms_().filter(function (f) { return f.id === String(row.formId); })[0];
+    if (!form) throw new Error('That form is not in the Forms list anymore.');
+    row.form = form.form; row.status = 'Submitted'; row.reviewedBy = ''; row.reviewedAt = ''; row.fileLink = '';
+  }
   if (sheet === 'Reports' && row.category === 'Van accident') notifyLeaders_('Van accident reported by ' + me.name, row.text + '\n\n' + (row.details || ''));
   appendRow_(sheet, row);
   return row;
@@ -479,6 +512,7 @@ function update_(me, sheet, id, patch) {
   var row = findRow_(sheet, id);
   if (!row) throw new Error('That entry no longer exists.');
   if (!canEdit_(me, sheet, row)) throw new Error('Only the person who added this (or a leader) can change it.');
+  if (sheet === 'Submissions' && !isLeader_(me)) throw new Error('Leaders review forms. Upload a new copy instead.');
   var p = {};
   for (var k in patch) if (k !== 'id' && k !== 'timestamp' && k !== OWNER_COLUMN[sheet]) p[k] = patch[k];
   if (sheet === 'Media') p = patch && patch.caption !== undefined ? { caption: patch.caption } : {};
@@ -491,6 +525,7 @@ function remove_(me, sheet, id) {
   var row = findRow_(sheet, id);
   if (!row) return { removed: true };
   if (!canEdit_(me, sheet, row)) throw new Error('Only the person who added this (or a leader) can delete it.');
+  if (sheet === 'Submissions' && !isLeader_(me) && row.status !== 'Submitted') throw new Error('This form was already reviewed. Upload a new copy instead.');
   if (sheet === 'Media' && row.driveFileId) {
     try {
       var f = DriveApp.getFileById(String(row.driveFileId));
@@ -504,7 +539,7 @@ function remove_(me, sheet, id) {
 /** True if the file sits in (or one level below) one of the app's Drive folders. */
 function inAppFolders_(file) {
   var cfg = config_();
-  var ok = ['photosFolderId', 'receiptsFolderId', 'donationsFolderId', 'interviewsFolderId', 'reportsFolderId']
+  var ok = ['photosFolderId', 'receiptsFolderId', 'donationsFolderId', 'interviewsFolderId', 'reportsFolderId', 'riderFormsFolderId']
     .map(function (k) { return String(cfg[k] || ''); }).filter(String);
   var parents = file.getParents();
   while (parents.hasNext()) {
@@ -557,6 +592,31 @@ function toggleDuty_(me, id, done) {
   var d = findRow_('Duties', id);
   if (!d) throw new Error('That job no longer exists.');
   return patchRow_('Duties', id, { done: !!done, doneBy: done ? me.name : '', doneAt: done ? new Date().toISOString() : '' });
+}
+
+var FORM_STATUSES = ['Submitted', 'Approved', 'Needs redo'];
+
+/** Leaders approve a rider's form, ask for a redo, or record a paper copy they received. */
+function reviewForm_(me, req) {
+  if (!isLeader_(me)) throw new Error('Only leaders can review forms.');
+  var status = String(req.status || '');
+  if (FORM_STATUSES.indexOf(status) < 0) throw new Error('Unknown form status: ' + status);
+  var now = new Date().toISOString();
+  var row;
+  if (req.id && findRow_('Submissions', req.id)) {
+    row = patchRow_('Submissions', req.id, { status: status, note: req.note || '', reviewedBy: me.name, reviewedAt: now });
+  } else {
+    var form = forms_().filter(function (f) { return f.id === String(req.formId); })[0];
+    if (!form || !req.rider) throw new Error('Pick a rider and a form.');
+    row = { id: req.id || newId_(), timestamp: now, day: '', rider: req.rider, formId: form.id, form: form.form, status: status,
+      note: req.note || '', fileLink: '', reviewedBy: me.name, reviewedAt: now };
+    appendRow_('Submissions', row);
+  }
+  if (status === 'Needs redo') {
+    var rider = readTable_('Riders').filter(function (r) { return r.name === row.rider; })[0];
+    if (rider) notifyRider_(rider, 'Please redo your ' + row.form, me.name + ' looked at your ' + row.form + ' and asked for a new copy.' + (req.note ? '\n\n' + req.note : '') + '\n\nUpload it in the app under More → My forms.');
+  }
+  return clean_(row);
 }
 
 function addDuty_(me, row) {
@@ -662,6 +722,7 @@ function folderFor_(kind, day, linkedSheet, linkedId) {
   else if (kind === 'receipt') key = 'receiptsFolderId';
   else if (kind === 'donation') key = 'donationsFolderId';
   else if (kind.indexOf('interview') === 0 || kind === 'release-form') key = 'interviewsFolderId';
+  else if (kind === 'rider-form') key = 'riderFormsFolderId';
   else key = 'reportsFolderId';
   parent = folderById_(cfg[key]);
   if (!parent) throw new Error('The Drive folder for ' + kind + ' files is missing. A leader should run setup() again.');
@@ -677,6 +738,11 @@ function folderFor_(kind, day, linkedSheet, linkedId) {
     var folder = cachedChild_(parent, 'iv_' + linkedId, fname);
     if (iv && !iv.folderUrl) { try { withLock_(function () { patchRow_('Interviews', linkedId, { folderUrl: folder.getUrl() }); }); } catch (e) { } }
     return folder;
+  }
+  if (key === 'riderFormsFolderId') {
+    var sub = linkedSheet === 'Submissions' && linkedId ? findRow_('Submissions', linkedId) : null;
+    var who = sub && sub.rider ? String(sub.rider) : 'Unsorted';
+    return cachedChild_(parent, 'forms_' + who.toLowerCase(), who);
   }
   return parent;
 }
@@ -698,6 +764,7 @@ function cachedChild_(parent, cacheKey, name) {
 function fileNameFor_(me, req) {
   var base = String(req.fileName || 'file').replace(/[\\\/]/g, '-');
   var prefix = 'D' + pad2_(req.day) + ' ';
+  if (req.kind === 'rider-form') return (req.caption ? String(req.caption).slice(0, 60) + ' – ' : '') + me.name + ' – ' + base;
   if (req.kind === 'receipt' || req.kind === 'donation') {
     return prefix + (req.caption ? String(req.caption).slice(0, 60) + ' ' : '') + me.name + ' ' + base;
   }
@@ -852,14 +919,35 @@ function responsibilitiesFor_(name, data, today) {
         (s.contactName ? ': ' + s.contactName : '') + (s.contactPhone ? ', ' + s.contactPhone : '') + '. Tick it in the app when done.');
     }
   });
+  formsToDo_(name, data.forms || [], data.submissions || []).forEach(function (f) {
+    if (f.status === 'Needs redo') items.push('Redo your ' + f.form + (f.note ? ' (' + f.note + ')' : '') + '. Upload it under More → My forms.');
+    else if (f.dueDate && daysBetween_(today, f.dueDate) <= 7) items.push('Upload your ' + f.form + ' (due ' + f.dueDate + '). More → My forms.');
+  });
   return items;
+}
+
+/** Required forms this rider still has to hand in: never sent, or sent back for a redo. */
+function formsToDo_(name, forms, submissions) {
+  var latest = {};
+  submissions.filter(function (x) { return String(x.rider).toLowerCase() === String(name).toLowerCase(); })
+    .sort(function (a, b) { return String(a.timestamp).localeCompare(String(b.timestamp)); })
+    .forEach(function (x) { latest[String(x.formId)] = x; });
+  var out = [];
+  forms.forEach(function (f) {
+    var last = latest[f.id];
+    if (last && last.status !== 'Needs redo') return;
+    if (!f.required && !last) return;
+    out.push({ form: f.form, dueDate: f.dueDate, status: last ? last.status : 'Missing', note: last ? String(last.note || '') : '' });
+  });
+  return out;
 }
 
 function sendDailyReminders() {
   var cfg = config_();
   var data = {
     config: { confirmDaysAhead: Number(cfg.confirmDaysAhead || 5) },
-    itinerary: itinerary_(), stayovers: stayovers_(), duties: duties_()
+    itinerary: itinerary_(), stayovers: stayovers_(), duties: duties_(),
+    forms: forms_(), submissions: readTable_('Submissions')
   };
   var today = todayStr_(0);
   var dayRow = data.itinerary.filter(function (d) { return d.date === today; })[0];
@@ -932,11 +1020,15 @@ function setup() {
     sh.getRange(1, 1, 1, sh.getLastColumn()).setFontWeight('bold').setBackground('#13294B').setFontColor('#ffffff');
     var heads = headers_(sh);
     // Tabs leaders fill in by hand get ready-made checkboxes; the app adds them row by row elsewhere.
-    if (['Riders', 'Itinerary', 'Stayovers', 'Duties'].indexOf(name) >= 0) {
+    if (['Riders', 'Itinerary', 'Stayovers', 'Duties', 'Forms'].indexOf(name) >= 0) {
       (CHECKBOX_COLUMNS[name] || []).forEach(function (h) {
         var c = heads.indexOf(h) + 1;
         if (c > 0) sh.getRange(2, c, 200, 1).insertCheckboxes();
       });
+    }
+    if (name === 'Forms') {
+      var fc = heads.indexOf('Due Date') + 1;
+      if (fc > 0) sh.getRange(2, fc, Math.max(sh.getMaxRows() - 1, 1), 1).setNumberFormat('yyyy-mm-dd');
     }
     if (name === 'Itinerary') {
       var dc = heads.indexOf('Date') + 1;
@@ -974,10 +1066,16 @@ function setup() {
     setConfig_('Root Folder ID', root.getId());
   }
   [['Photos Folder ID', 'Photos & Videos (by day)'], ['Receipts Folder ID', 'Receipts'], ['Donations Folder ID', 'Donations'],
-   ['Interviews Folder ID', 'Portrait Interviews'], ['Reports Folder ID', 'Reports & Accidents']].forEach(function (pair) {
+   ['Interviews Folder ID', 'Portrait Interviews'], ['Reports Folder ID', 'Reports & Accidents'],
+   ['Rider Forms Folder ID', 'Rider Forms (leaders only)']].forEach(function (pair) {
     if (!folderById_(config_()[keyOf_(pair[0])])) setConfig_(pair[0], childFolder_(root, pair[1]).getId());
   });
   secret_();
+
+  // Starting list of rider forms
+  if (!readTable_('Forms').length) {
+    FORM_DEFAULTS.forEach(function (f) { appendRow_('Forms', { id: f[0], form: f[1], description: f[2], required: f[3], templateLink: '', dueDate: '' }); });
+  }
 
   // Daily reminder trigger
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'sendDailyReminders') ScriptApp.deleteTrigger(t); });

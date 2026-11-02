@@ -6,6 +6,7 @@ import { jobsFor, openJobCount } from './lib/jobs';
 import { loadCachedBoot, refreshBoot, todayDay, useBoot, useOutbox, useSession } from './lib/store';
 import { kick } from './lib/sync';
 import { DayScreen } from './screens/DayScreen';
+import { FormsScreen } from './screens/Forms';
 import { InstallScreen } from './screens/Install';
 import { InterviewDetail, InterviewsScreen } from './screens/Interviews';
 import { JournalScreen } from './screens/Journal';
@@ -64,6 +65,7 @@ export function App() {
     case 'team': screen = <TeamScreen />; tab = 'more'; break;
     case 'settings': screen = <SettingsScreen />; tab = 'more'; break;
     case 'install': screen = <InstallScreen />; tab = 'more'; break;
+    case 'forms': screen = <FormsScreen tab={b} key={b || 'mine'} />; tab = 'more'; break;
     default: screen = <MoreScreen />; tab = 'more';
   }
   if (a === 'more') tab = 'more';

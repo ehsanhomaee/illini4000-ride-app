@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ApiError, call, getToken, setToken } from '../api/client';
 import { demoMediaUrl } from '../api/demo';
 import { isDemo } from '../api/client';
-import type { Bootstrap, Day, ListSheet, Media, Rider, SheetRows } from '../api/types';
+import type { Bootstrap, Day, FormStatus, ListSheet, Media, Rider, SheetRows, Submission } from '../api/types';
 import { idb, prefs } from './db';
 import { namesIn } from './jobs';
 import { isoLocal } from './dates';
@@ -59,9 +59,17 @@ onAuthLost(() => { void signOut(); });
 
 // ------------------------------------------------------------- bootstrap --
 
+/** Older backends and older saved copies may not have every list. */
+function normalize(data: Bootstrap): Bootstrap {
+  data.forms = data.forms || [];
+  data.submissions = data.submissions || [];
+  data.duties = data.duties || [];
+  return data;
+}
+
 export async function loadCachedBoot() {
   const cached = await idb.get<{ data: Bootstrap; at: number }>('kv', 'boot');
-  if (cached && !bootStore.get().data) bootStore.set({ ...bootStore.get(), data: cached.data, fetchedAt: cached.at });
+  if (cached && !bootStore.get().data) bootStore.set({ ...bootStore.get(), data: normalize(cached.data), fetchedAt: cached.at });
 }
 
 let bootSeq = 0;
@@ -73,7 +81,7 @@ export async function refreshBoot() {
   const started = Date.now();
   bootStore.set({ ...bootStore.get(), loading: true, error: '' });
   try {
-    const data = await call<Bootstrap>('bootstrap');
+    const data = normalize(await call<Bootstrap>('bootstrap'));
     if (mine !== bootSeq) return; // a newer refresh is on its way
     if (started < masterChangedAt) { bootStore.set({ ...bootStore.get(), loading: false }); scheduleRefresh(); return; } // too old: misses a change that just synced
     applyPendingToBoot(data);
@@ -108,6 +116,12 @@ function applyCallToBoot(data: Bootstrap, action: string, p: Record<string, any>
   } else if (action === 'toggleDuty') {
     const d = data.duties.find(x => x.id === p.id);
     if (d) Object.assign(d, { done: !!p.done, doneBy: p.done ? me : '', doneAt: p.done ? now : '' });
+  } else if (action === 'add' && p.sheet === 'Submissions') {
+    if (p.row.rider === me && !data.submissions.some(x => x.id === p.row.id)) data.submissions.push({ ...p.row, status: 'Submitted' });
+  } else if (action === 'reviewForm') {
+    const x = data.submissions.find(s => s.id === p.id);
+    if (x) Object.assign(x, { status: p.status, note: p.note || '' });
+    else if (p.rider === me) data.submissions.push({ ...reviewRow(p, me) });
   } else if (action === 'addDuty') {
     if (!data.duties.find(x => x.id === p.row.id)) data.duties.push({ ...p.row, done: false, doneBy: '', doneAt: '' });
   } else if (action === 'swapDriver') {
@@ -134,7 +148,27 @@ export async function mutate(action: string, params: Record<string, unknown>, la
 
 /** Add a row to one of the logs (journal, gas, donation…). */
 export async function addRow<S extends ListSheet>(sheet: S, row: Partial<SheetRows[S]> & { id: string; day: number }, label: string) {
+  if (sheet === 'Submissions') {
+    const b = bootStore.get();
+    if (b.data) {
+      const copy: Bootstrap = structuredClone(b.data);
+      applyCallToBoot(copy, 'add', { sheet, row }, sessionStore.get().me?.name || '');
+      bootStore.set({ ...b, data: copy });
+    }
+  }
   await enqueueCall('add', { sheet, row }, label);
+}
+
+/** The row a leader's review creates when there was no upload (e.g. a paper copy). */
+function reviewRow(p: Record<string, any>, me: string): Submission { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const now = new Date().toISOString();
+  return { id: p.id, timestamp: now, day: 0, rider: p.rider, formId: p.formId, form: p.form || '', status: p.status, note: p.note || '',
+    fileLink: '', reviewedBy: me, reviewedAt: now };
+}
+
+/** Leaders: approve a form, ask for a new copy, or record a paper copy. */
+export async function reviewForm(params: { id: string; status: FormStatus; note?: string; rider?: string; formId?: string; form?: string }, label: string) {
+  await enqueueCall('reviewForm', { sheet: 'Submissions', ...params }, label);
 }
 
 // Things the server has accepted that the lists have not fetched again yet,
@@ -153,6 +187,9 @@ onOpDone((op: Op, result: unknown) => {
     synced.push({ sheet: String(op.params.sheet), at, patch: { id: String(op.params.id), patch: op.params.patch as Record<string, unknown> } });
   } else if (op.action === 'remove') {
     synced.push({ sheet: String(op.params.sheet), at, removeId: String(op.params.id) });
+  } else if (op.action === 'reviewForm' && result && typeof result === 'object') {
+    const row = result as Record<string, unknown>;
+    synced.push({ sheet: 'Submissions', at, row, patch: { id: String(row.id), patch: row } });
   } else {
     masterChangedAt = at;
   }
@@ -263,6 +300,12 @@ export function useRows<S extends ListSheet>(sheet: S, day?: number): { rows: Sh
     const calls = ops.filter((o): o is CallOp => o.type === 'call' && o.params.sheet === sheet);
     const removed = new Set(calls.filter(o => o.action === 'remove').map(o => String(o.params.id)));
     const updates = calls.filter(o => o.action === 'update').map(o => o.params as { id: string; patch: Partial<R> });
+    const me = sessionStore.get().me?.name || '';
+    for (const o of calls.filter(c => c.action === 'reviewForm')) {
+      const p = o.params as Record<string, string>;
+      if (ids.has(p.id)) updates.push({ id: p.id, patch: { status: p.status, note: p.note || '', reviewedBy: me, reviewedAt: new Date(o.createdAt).toISOString() } as unknown as Partial<R> });
+      else if (!pending.some(r => r.id === p.id)) pending.push({ ...reviewRow(p, me), _pending: true } as unknown as R);
+    }
     const merged = [...patched, ...pending, ...(sheet === 'Media' ? pendingMedia.filter(m => !ids.has(m.id)) : [])]
       .filter(r => !removed.has(r.id))
       .map(r => { const u = updates.filter(x => x.id === r.id); return u.length ? Object.assign({}, r, ...u.map(x => x.patch)) : r; });

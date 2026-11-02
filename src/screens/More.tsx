@@ -7,7 +7,7 @@ import { ReportSheet } from '../components/forms';
 import { Avatar, Empty, Field, Tag, TopBar, toast } from '../components/ui';
 import { prefs } from '../lib/db';
 import { fmtDateTime } from '../lib/dates';
-import { callStatus, hasName } from '../lib/jobs';
+import { callStatus, formsToDo, hasName } from '../lib/jobs';
 import { fmtPhone, photoQuality, setPhotoQuality, smsUrl, telUrl, isIOS } from '../lib/media';
 import { refreshBoot, signOut, todayDay, useBoot, useOutbox, useRows, useSession } from '../lib/store';
 import { discard, enqueueCall, kick, retry, setPaused, syncState } from '../lib/sync';
@@ -18,7 +18,9 @@ export function MoreScreen() {
   const ops = useOutbox();
   if (!data || !me) return null;
   const myCalls = data.stayovers.filter(s => hasName(s.caller, me.name) && callStatus(data, s).status === 'due').length;
+  const myForms = formsToDo(data, me.name).length;
   const items: [string, string, string, string, number?][] = [
+    ['#/forms', 'receipt', me.role === 'rider' ? 'My forms' : 'Forms', 'Waiver, media release, insurance card…', myForms],
     ['#/stayovers', 'bed', 'Stayovers', 'Hosts, food, showers, confirmation calls', myCalls],
     ['#/van', 'van', 'Van', 'Driver rotation, gas log, accidents'],
     ['#/money', 'receipt', 'Receipts', 'Expenses and reimbursements'],

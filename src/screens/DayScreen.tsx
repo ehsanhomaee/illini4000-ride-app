@@ -234,7 +234,21 @@ function Jobs({ jobs, me, openCall, openSwap, openGas, openRoute }: {
                   <div className="acts"><button className="btn small primary" onClick={() => openRoute(j.day)}>Add route</button></div></div>
               </div>
             );
-            const label = `Day ${j.day.day} · ${fmtDate(j.day.date)} (${relativeDay(j.day.date)})`;
+            if (j.kind === 'forms') {
+              const redo = j.todo.filter(f => f.status === 'Needs redo');
+              const missing = j.todo.filter(f => f.status === 'Missing');
+              return (
+                <div key={i} className="job">
+                  <span className="mark static"><Icon name="receipt" size={16} /></span>
+                  <div className="body">
+                    <div className="t">{redo.length && !missing.length ? 'A form needs a new copy' : 'Hand in your forms'}</div>
+                    <div className="s">{[...redo.map(f => `${f.form.form} (new copy)`), ...missing.map(f => f.form.form)].join(', ')}</div>
+                    <div className="acts"><a className="btn small primary" href="#/forms">Upload forms</a></div>
+                  </div>
+                </div>
+              );
+            }
+            const label =`Day ${j.day.day} · ${fmtDate(j.day.date)} (${relativeDay(j.day.date)})`;
             return (
               <div key={i} className="job">
                 <button className="mark" aria-label="Confirm stayover" onClick={() => openCall(j.stayover, label)} />

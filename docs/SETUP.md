@@ -23,7 +23,8 @@ Use the **club's regular Google account** (an `@gmail.com` address the leaders s
 2. Google asks for permission. Click **Review permissions** → choose the club account → **Advanced** → **Go to … (unsafe)** → **Allow**. ("Unsafe" only means Google hasn't reviewed your own script.)
 3. Go back to the sheet. A box shows the **team code** and the **app files folder**. Setup has:
    - created the tabs (Config, Riders, Itinerary, Stayovers, Duties, and one tab per log),
-   - created the Drive folders: *Photos & Videos (by day)*, *Receipts*, *Donations*, *Portrait Interviews*, *Reports & Accidents*,
+   - created the Drive folders: *Photos & Videos (by day)*, *Receipts*, *Donations*, *Portrait Interviews*, *Reports & Accidents*, *Rider Forms (leaders only)*,
+   - filled the **Forms** tab with a starting list of rider paperwork (waiver, media release, insurance card…),
    - scheduled the morning reminder (6 am by default, `Reminder Hour` in Config).
 4. Reload the sheet. An **Illini 4000** menu appears with *Set up / repair*, *Refresh mileage from RideWithGPS*, *Send today's reminders now* and *Fill with sample data*.
 
@@ -56,7 +57,9 @@ In the **Config** tab, the `… Folder ID` rows say where files go. To use an ex
 
 ## 7. Fill the sheet
 
-See **[SHEET-GUIDE.md](SHEET-GUIDE.md)**. At minimum: everyone in **Riders**, the days in **Itinerary**, and the hosts in **Stayovers**.
+See **[SHEET-GUIDE.md](SHEET-GUIDE.md)**. At minimum: everyone in **Riders**, the days in **Itinerary**, the hosts in **Stayovers**, and this year's paperwork in **Forms**.
+
+Share the *Rider Forms (leaders only)* Drive folder with the trip leaders' own Google accounts (Viewer is enough) so they can open uploaded waivers and insurance cards from the app. Don't share it with riders.
 
 ## 8. Kick-off
 
@@ -69,6 +72,7 @@ See **[SHEET-GUIDE.md](SHEET-GUIDE.md)**. At minimum: everyone in **Riders**, th
 
 - Everything goes into the master sheet and Drive folders owned by the club account. Whoever can open the sheet can read all of it, including "Just me" journal entries.
 - "This phone only" journal entries never leave the phone.
+- Rider forms (waivers, insurance cards, medical info) are visible in the app only to the rider who uploaded them and to leaders, and are saved in the private *Rider Forms* folder.
 - Photos and videos are shared "anyone with the link" so the app can show thumbnails (turn off with `Share Photos With Link = FALSE`; the gallery then shows file names). Receipts, donations, interviews and reports are never shared.
 - Riders can edit and delete only what they added. Leaders and the route master (Role column) can edit anything, change routes and add jobs.
 
@@ -79,7 +83,7 @@ With a regular Google account Apps Script allows, per day: 100 email recipients,
 ## Each new year
 
 1. In last year's sheet: **File → Make a copy**. The script comes along.
-2. In the copy, clear the log tabs (Checkins, Journals, Reports, Gas, Expenses, Donations, Interviews, Media, DriverSwaps), clear **PIN Hash**, update Riders/Itinerary/Stayovers, and blank out the `… Folder ID` rows and Team Code in Config.
+2. In the copy, clear the log tabs (Checkins, Journals, Reports, Gas, Expenses, Donations, Interviews, Submissions, Media, DriverSwaps), clear **PIN Hash**, update Riders/Itinerary/Stayovers, and blank out the `… Folder ID` rows and Team Code in Config.
 3. Copy last year's **Route comment** reports into each day's **Notes From Previous Riders**.
 4. Run **setup**, do a **New deployment**, and put the new URL in `public/config.json`.
 
@@ -93,3 +97,4 @@ With a regular Google account Apps Script allows, per day: 100 email recipients,
 | Photo grid shows names instead of pictures | Sharing with link is blocked or turned off; tap a photo to open it in Drive. |
 | No morning emails | Check the Email column in Riders, `Send Reminder Emails = TRUE`, and that the trigger exists (Apps Script → Triggers, clock icon). Re-run setup after changing Reminder Hour. |
 | Someone is stuck on "Wrong PIN" | Clear their PIN Hash cell; they choose a new PIN on next sign-in. |
+| You updated `Code.gs` from GitHub and new tabs (e.g. Forms) are missing | Run **Illini 4000 → Set up / repair tabs and folders** once, then deploy a new version (step 5). |

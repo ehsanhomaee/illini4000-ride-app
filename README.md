@@ -25,6 +25,7 @@ Works on iPhone and Android with no app store: it installs from the browser to t
 | **Journal** | Team journal, a private journal, or "this phone only" entries. |
 | **Check-in** | "I left", "I arrived", "In the van" with optional location, and a board of who has arrived. Leaders log the team's stayover check-in/out times. |
 | **Reports** | Route issues and comments, stayover comments, bike problems, injuries, van accidents (leaders are alerted). Route comments become next year's "notes from previous riders". |
+| **Rider forms** | Leaders list the paperwork (liability waiver, media release, insurance card, medical info…). Each rider uploads a photo or PDF of theirs; leaders approve it or ask for a new copy, and see who's still missing what. Kept in a private folder only leaders can open. |
 | **Receipts & donations** | Receipts with photo, category and who to reimburse; donations with donor, amount, what was given, and thank-you tracking. Saved to separate Drive folders. |
 | **Portrait interviews** | Record audio in the app, add video, portraits and the signed release. One Drive folder per person. |
 

@@ -191,12 +191,14 @@ async function runOne(op: Op): Promise<unknown> {
   return call(op.action, op.params);
 }
 
-export function kick() { void loop(); }
+let again = false;
+export function kick() { if (running) again = true; void loop(); }
 
 async function loop() {
   await load();
   if (running || paused) return;
-  running = true; lastError = ''; emit();
+  running = true; again = false; lastError = ''; emit();
+  let stoppedEarly = false;
   try {
     // Small items first (in order), then files, so one big video never holds up a check-in.
     const mine = outbox();
@@ -211,8 +213,8 @@ async function loop() {
         doneHook?.(op, result); // before drop(), so the screens never miss it
         await drop(op);
       } catch (e) {
-        if (e instanceof NetworkError || (e instanceof ApiError && e.retryable)) { lastError = e.message; break; } // try again later
-        if (e instanceof ApiError && e.auth) { lastError = e.message; authHook?.(); break; }
+        if (e instanceof NetworkError || (e instanceof ApiError && e.retryable)) { lastError = e.message; stoppedEarly = true; break; } // try again later
+        if (e instanceof ApiError && e.auth) { lastError = e.message; stoppedEarly = true; authHook?.(); break; }
         const latest = ops.find(o => o.id === op.id) || op;
         if (e instanceof ApiError && e.message === 'UPLOAD_EXPIRED' && latest.type === 'upload') {
           await save({ ...latest, started: false, offset: 0, needsProbe: false });
@@ -230,6 +232,8 @@ async function loop() {
     running = false;
     emit();
   }
+  // Something was added while this round was sending: send it now rather than in 30 s.
+  if (again && !stoppedEarly && !paused) { again = false; void loop(); }
 }
 
 // Try again whenever the phone gets signal back or the app comes to the front.

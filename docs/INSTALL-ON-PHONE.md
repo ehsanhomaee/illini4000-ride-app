@@ -24,6 +24,10 @@ The home-screen app has its own sign-in, separate from Safari, so sign in from t
 - **Microphone**: to record portrait interviews.
 - **Location**: only attached when you check in or report something, if you leave the box ticked.
 
+## Hand in your forms
+
+Go to **More → My forms**. For each form (waiver, media release, insurance card…) tap **Upload** and take a photo of each page or pick a PDF. If a leader asks for a new copy you'll get a message, and the form shows what's needed. Only you and the trip leaders can see your forms.
+
 ## Morning reminders
 
 Every morning the app sends your jobs for the day: driving the van, stayovers to call, the blog post and so on.

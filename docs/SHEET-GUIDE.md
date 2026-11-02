@@ -57,9 +57,23 @@ The app reads column **names**, so you can reorder columns or add your own colum
 
 Driving, stayover calls and adding routes don't need rows here: the app works those out from the other tabs.
 
+### Forms (what every rider hands in)
+| Column | What to put |
+|---|---|
+| ID | Short and unique: `F1`, `F2`… Don't change it once riders have uploaded. |
+| Form | The name riders see: `Liability waiver`, `Media release`, `Health insurance card`… |
+| Description | One line on what to upload, e.g. "Photos of the front and back of your card." |
+| Required | Tick if every rider must hand it in. Unticked forms show as optional. |
+| Template Link | Optional link to the blank form (a Google Doc or PDF) so riders can download, print and sign it. |
+| Due Date | Optional. Riders get a reminder starting a week before. |
+
+Setup fills in a starting list (waiver, media release, insurance card, medical & emergency info, bike safety check, parent/guardian consent). Edit it to match this year's paperwork.
+
+Riders upload a photo or PDF under **More → My forms**. Files go to *Rider Forms (leaders only)* in Drive, one folder per rider. Leaders review them in the app under **Forms → Team**: approve, ask for a new copy (the rider is notified), or mark a form received on paper. Every upload and review is a row in the **Submissions** tab, so you can filter it by form or status.
+
 ### Config
 Team name, team code, how many days ahead stayovers are reconfirmed, reminder hour, emergency info shown on the Team screen, folder IDs and the optional RideWithGPS API key. Each row has a note.
 
 ## Tabs the app fills
 
-Checkins, Journals, Reports, Gas, Expenses, Donations, Interviews, Media and DriverSwaps get a row for everything people log. You can sort, filter and total them like any sheet; for example, filter Expenses by **Reimburse To** for the treasurer, or Donations by **Thank You Sent**. The **Receipt Link** / **File Link** columns link straight to the photo in Drive. Avoid editing the **ID** column.
+Checkins, Journals, Reports, Gas, Expenses, Donations, Interviews, Submissions, Media and DriverSwaps get a row for everything people log. You can sort, filter and total them like any sheet; for example, filter Expenses by **Reimburse To** for the treasurer, or Donations by **Thank You Sent**. The **Receipt Link** / **File Link** columns link straight to the photo in Drive. Avoid editing the **ID** column.
