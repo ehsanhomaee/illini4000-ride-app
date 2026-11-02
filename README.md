@@ -4,6 +4,8 @@ The team's phone app for the summer ride. Open it in the morning and it shows th
 
 Works on iPhone and Android with no app store: it installs from the browser to the home screen. It keeps working without signal and uploads later.
 
+**Open the app:** https://ehsanhomaee.github.io/illini4000-ride-app/ (runs as a demo until the team's Google Sheet is connected)
+
 <p>
 <img src="docs/screenshots/today.png" width="200" alt="Today screen: route sign, jobs, quick actions">
 <img src="docs/screenshots/stayover.png" width="200" alt="Tonight's stayover with food, showers and confirmation">
